@@ -2,3 +2,7 @@
 __pycache__/
 .env
 subtitle/
+subtitle_reprocess/
+model/
+*.log
+

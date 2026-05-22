@@ -33,9 +33,21 @@ JWT_TOKEN = os.getenv("JWT_TOKEN", "")
 USER_AGENT = os.getenv("USER_AGENT", "MeuDownloaderLegendas v1.0")
 
 
+def pontuar_legenda(atributos):
+    pontos = 0
+    if atributos.get('from_trusted'):
+        pontos += 1000
+    if not atributos.get('ai_translated') and not atributos.get('machine_translated'):
+        pontos += 500
+    pontos += (atributos.get('ratings') or 0) * 100
+    pontos += (atributos.get('votes') or 0) * 10
+    pontos += (atributos.get('download_count') or 0)
+    return pontos
+
+
 def buscar_legenda_por_imdb(imdb_id, idioma):
     """
-    Busca e baixa legenda pelo código IMDB.
+    Busca e baixa a melhor legenda disponível pelo código IMDB.
 
     Returns:
         tuple: (nome_arquivo_ou_None, contagem_encontrada, mensagem_erro_ou_None, remaining_ou_None)
@@ -71,17 +83,17 @@ def buscar_legenda_por_imdb(imdb_id, idioma):
         response.raise_for_status()
 
         data = response.json()
-        contagem = len(data.get('data', []))
+        resultados = data.get('data', [])
+        contagem = len(resultados)
 
         if contagem == 0:
             print(f"Nenhuma legenda encontrada para {imdb_id} no idioma {idioma}")
             return None, 0, None, None
 
-        legenda = data['data'][0]
-        file_id = legenda['attributes']['files'][0]['file_id']
+        melhor = max(resultados, key=lambda r: pontuar_legenda(r['attributes']))
+        file_id = melhor['attributes']['files'][0]['file_id']
 
-        print(f"Legenda encontrada: {legenda['attributes']['release']}")
-        print(f"Obtendo link de download...")
+        print(f"Legenda encontrada: {melhor['attributes'].get('release', '?')} ({contagem} disponíveis)")
 
         download_headers = {**headers}
         if JWT_TOKEN:
@@ -118,9 +130,9 @@ def buscar_legenda_por_imdb(imdb_id, idioma):
         return None, 0, msg, None
 
 
-def buscar_legendas_multiplos_idiomas(imdb_id, idiomas=['en', 'pt-BR']):
+def buscar_legendas_multiplos_idiomas(imdb_id):
     """
-    Busca legendas em múltiplos idiomas para o mesmo IMDB ID.
+    Busca legendas em EN e PT (pt-BR com fallback para pt).
 
     Returns:
         tuple: (lista_arquivos, dict{idioma: (contagem, erro)}, remaining_ou_None)
@@ -128,8 +140,14 @@ def buscar_legendas_multiplos_idiomas(imdb_id, idiomas=['en', 'pt-BR']):
     arquivos = []
     resultados = {}
     remaining = None
-    for idioma in idiomas:
+
+    for idioma in ['en', 'pt-BR', 'pt']:
         print("-" * 50)
+
+        # pt só é tentado se pt-BR não encontrou legenda
+        if idioma == 'pt' and resultados.get('pt-BR', (0, None))[0] > 0:
+            break
+
         arquivo, contagem, erro, rem = buscar_legenda_por_imdb(imdb_id, idioma)
         resultados[idioma] = (contagem, erro)
         if arquivo:
@@ -138,6 +156,7 @@ def buscar_legendas_multiplos_idiomas(imdb_id, idiomas=['en', 'pt-BR']):
             remaining = rem
         if remaining == 0:
             break
+
     return arquivos, resultados, remaining
 
 
@@ -217,7 +236,7 @@ if __name__ == "__main__":
     else:
         for imdb_id in pendentes:
             print(f"\nProcessando filme IMDB: {imdb_id}")
-            _, resultados, remaining = buscar_legendas_multiplos_idiomas(imdb_id, ['en', 'pt-BR'])
+            _, resultados, remaining = buscar_legendas_multiplos_idiomas(imdb_id)
             escrever_log(imdb_id, resultados)
 
             if remaining == 0:
