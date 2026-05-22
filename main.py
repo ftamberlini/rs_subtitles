@@ -132,6 +132,8 @@ def buscar_legenda_por_imdb(imdb_id, idioma):
 
 def buscar_legendas_multiplos_idiomas(imdb_id):
     """
+    
+    Teste
     Busca legendas em EN e PT (pt-BR com fallback para pt).
 
     Returns:
